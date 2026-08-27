@@ -1,4 +1,5 @@
 mod parser;
+mod simulator;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

@@ -1,19 +1,23 @@
-// use std::collections::HashMap;
+use std::collections::HashMap;
+use std::sync::OnceLock;
 use std::fs;
 
-#[derive(Default)]
+use regex::Regex;
+
+#[derive(Debug, Clone)]
 pub struct Config {
-    // pub stocks: HashMap<String, usize>,
-    // pub processes: Vec<String>,
-    // pub optimize: Vec<String>,
+    pub stocks: HashMap<String, usize>,
+    pub processes: Vec<Process>,
+    pub optimize: Vec<String>,
 }
 
-pub fn parse(args: &Vec<String>) -> Result<Config, String> {
+pub fn parse(args: &[String]) -> Result<Config, String> {
+    if args.len() < 2 {
+        return Err("Usage: ./stock_exchange <config_file> <waiting_time>".to_string());
+    }
     let file = &args[1];
-    // let time = &args[2];
 
-    parse_file(file)?;
-    todo!()
+    parse_file(file)
 }
 
 fn parse_file(file_name: &str) -> Result<Config, String> {
@@ -25,69 +29,110 @@ fn parse_file(file_name: &str) -> Result<Config, String> {
         .filter(|l| !l.is_empty() && !l.starts_with('#'))
         .collect();
 
+    let mut stocks: HashMap<String, usize> = HashMap::new();
+    let mut processes: Vec<Process> = Vec::new();
+    let mut optimize: Vec<String> = Vec::new();
+
     for line in &lines {
         if line.starts_with("optimize:") {
-            println!("OPTIMIZE: {}", line);
+            //
+            if !optimize.is_empty() {
+                return Err("Duplicate optimize directive found".to_string());
+            }
+            optimize = parse_optimize(line)?;
+            //
         } else if line.contains("(") {
-            println!("PROCESS: {}", line);
+            //
+            let proc = parse_process(line)?;
+            if processes.iter().any(|p| p.name == proc.name) {
+                return Err(format!("Duplicate process definition found: {}", proc.name));
+            }
+            processes.push(proc);
+            //
         } else {
-            println!("STOCK: {}", line);
+            let (name, qty) = parse_stock(line)?;
+            if stocks.insert(name.clone(), qty).is_some() {
+                return Err(format!("Duplicate stock definition found: {}", name));
+            }
         }
     }
 
-    Ok(Config {})
+    Ok(Config {
+        stocks,
+        processes,
+        optimize,
+    })
 }
 
 // ===== Stock =====
+static STOCK_RE: OnceLock<Regex> = OnceLock::new();
+
+fn stock_regex() -> &'static Regex {
+    STOCK_RE.get_or_init(|| { Regex::new(r"^(?<name>[a-zA-Z0-9_-]+):(?<qty>\d+)$").unwrap() })
+}
+
 fn stock_err(line: &str, reason: &str) -> String {
     format!("Error in stock `{}`: {}\nUsage: <stock_name>:<quantity>", line.trim(), reason)
 }
 
 fn parse_stock(line: &str) -> Result<(String, usize), String> {
-    let parts: Vec<&str> = line.trim().split(":").collect();
+    let reg = stock_regex();
+    let caps = reg.captures(line.trim()).ok_or_else(|| stock_err(line, ""))?;
 
-    if parts.len() != 2 {
-        return Err(stock_err(line, "expected exactly one colon ':' between name and quantity"));
-    }
+    let name: String = caps["name"].to_owned();
+    let qty: usize = caps["qty"].parse().map_err(|_| stock_err(line, "failed to parse quantity"))?;
 
-    let name = parts[0].trim();
-    let quantity: usize = parts[1]
-        .trim()
-        .parse()
-        .map_err(|_| stock_err(line, "quantity must be a valid positive integer"))?;
-
-    Ok((name.to_owned(), quantity))
+    Ok((name, qty))
 }
 
 // ===== Optimize =====
+
+static OPTIMIZE_RE: OnceLock<Regex> = OnceLock::new();
+
+fn optimize_regex() -> &'static Regex {
+    OPTIMIZE_RE.get_or_init(|| { Regex::new(r"^optimize:\((?<targets>[^)]+)\)$").unwrap() })
+}
 
 fn optimize_err(line: &str, reason: &str) -> String {
     format!("Error in optimize `{}`: {}\nUsage: optimize:(<stock_name>|time)", line.trim(), reason)
 }
 
-fn parse_optimize(line: &str) -> Result<Vec<String>, String> {
-    let mut to_op = line.trim().strip_prefix("optimize:").unwrap().trim();
-
-    if !to_op.starts_with("(") || !to_op.ends_with(")") {
-        return Err(optimize_err(line, "expected targets wrapped in parentheses `(...)`"));
-    }
-
-    to_op = &to_op[1..to_op.len() - 1];
-
-    let elems: Vec<String> = to_op
-        .split(|ch| (ch == ';' || ch == '|'))
-        .filter(|elem| !elem.is_empty())
-        .map(|elem| elem.to_string())
-        .collect();
-
-    if elems.is_empty() {
-        return Err(optimize_err(line, "no valid optimization targets found"));
-    }
-
-    Ok(elems)
+fn parse_optimize_targets(targets_str: &str) -> Vec<String> {
+    targets_str
+        .split(|c| (c == '|' || c == ';'))
+        .filter(|el| !el.is_empty())
+        .map(|el| el.to_string())
+        .collect()
 }
 
-// ===== Optimize =====
+fn parse_optimize(line: &str) -> Result<Vec<String>, String> {
+    let reg = optimize_regex();
+    let caps = reg.captures(line.trim()).ok_or_else(|| optimize_err(line, ""))?;
+
+    let targets_str = &caps["targets"];
+    let targets: Vec<String> = parse_optimize_targets(targets_str);
+
+    Ok(targets)
+}
+
+// ===== Process =====
+#[derive(Debug, Clone)]
+pub struct Process {
+    pub name: String,
+    pub needs: HashMap<String, usize>,
+    pub results: HashMap<String, usize>,
+    pub delay: usize,
+}
+
+static PROCESS_RE: OnceLock<Regex> = OnceLock::new();
+
+fn process_regex() -> &'static Regex {
+    PROCESS_RE.get_or_init(|| {
+        Regex::new(
+            r"^(?<name>[^:]+):\((?<needs>[^)]*)\):\((?<results>[^)]*)\):(?<delay>\d+)$"
+        ).unwrap()
+    })
+}
 
 fn process_err(line: &str, reason: &str) -> String {
     format!(
@@ -97,6 +142,41 @@ fn process_err(line: &str, reason: &str) -> String {
     )
 }
 
-fn parse_process(line: &str) -> String {
-    
+fn parse_items(items_str: &str) -> Result<HashMap<String, usize>, String> {
+    let mut items: HashMap<String, usize> = HashMap::new();
+
+    if items_str.is_empty() {
+        return Ok(items);
+    }
+
+    for item in items_str.split(";") {
+        let (name, quantity) = parse_stock(item)?;
+
+        items.insert(name, quantity);
+    }
+
+    Ok(items)
+}
+
+fn parse_process(line: &str) -> Result<Process, String> {
+    let reg = process_regex();
+
+    let caps = reg.captures(line).ok_or_else(|| process_err(line, ""))?;
+
+    let needs_str = &caps["needs"].trim();
+    let results_str = &caps["results"].trim();
+
+    let name = caps["name"].to_string();
+    let needs: HashMap<String, usize> = parse_items(needs_str)?;
+    let results: HashMap<String, usize> = parse_items(results_str)?;
+    let delay: usize = caps["delay"]
+        .parse()
+        .map_err(|_| process_err(line, "failed to parse delay"))?;
+
+    Ok(Process {
+        name,
+        needs,
+        results,
+        delay,
+    })
 }
