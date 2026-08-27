@@ -26,7 +26,7 @@ fn parse_file(file_name: &str) -> Result<Config, String> {
         .collect();
 
     for line in &lines {
-        if line.starts_with("optimize") {
+        if line.starts_with("optimize:") {
             println!("OPTIMIZE: {}", line);
         } else if line.contains("(") {
             println!("PROCESS: {}", line);
@@ -38,8 +38,49 @@ fn parse_file(file_name: &str) -> Result<Config, String> {
     Ok(Config {})
 }
 
-// enum LineType {
-//     Stock((String, usize)),
-//     Process(String),
-//     Optimize(String),
-// }
+// ===== Stock =====
+fn stock_err(line: &str) -> String {
+    format!("Invalid stock {}\nUsage: <stock_name>:<quantity>", line.trim())
+}
+
+fn parse_stock(line: &str) -> Result<(String, usize), String> {
+    let parts: Vec<&str> = line.trim().split(":").collect();
+
+    if parts.len() != 2 {
+        return Err(stock_err(line));
+    }
+
+    let name = parts[0].trim();
+    let quantity: usize = parts[1]
+        .trim()
+        .parse()
+        .map_err(|_| stock_err(line))?;
+
+    Ok((name.to_owned(), quantity))
+}
+
+// ===== Optimize =====
+
+fn optimize_err(line: &str) -> String {
+    format!("Invalid optimize {}\nUsage: optimize:(<stock_name>|time)", line.trim())
+}
+
+fn parse_optimize(line: &str) -> Result<Vec<String>, String> {
+    let mut to_op = line.trim().strip_prefix("optimize:").unwrap().trim();
+
+    if !to_op.starts_with("(") || !to_op.ends_with(")") {
+        return Err(optimize_err(line));
+    }
+
+    to_op = &to_op[1..to_op.len() - 1];
+
+    let elems: Vec<String> = to_op
+        .split(|ch| (ch == ';' || ch == '|'))
+        .filter(|elem| !elem.is_empty())
+        .map(|elem| elem.to_string())
+        .collect();
+
+    Ok(elems)
+}
+
+// ===== Optimize =====
