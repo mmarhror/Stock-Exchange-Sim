@@ -1,4 +1,8 @@
 use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
+use std::time::Instant;
+
 use crate::parser::Config;
 
 #[derive(Debug, Clone)]
@@ -41,72 +45,101 @@ impl Process {
     }
 }
 
-pub struct RunningProcess {
+struct RunningProcess {
     pub process: Process,
     pub finish_cycle: usize,
 }
 
-pub fn simulate(config: Config, time: usize) {
-    let mut stocks = config.stocks;
-    let curr_cycle = 0;
-    let running: Vec<RunningProcess> = Vec::new();
+struct State {
+    curr_cycle: usize,
+    running: Vec<RunningProcess>,
+    stocks: HashMap<String, usize>,
+    history: Vec<String>,
+}
+
+impl State {
+    fn new(stocks: HashMap<String, usize>) -> Self {
+        State { curr_cycle: 0, running: Vec::new(), stocks: stocks, history: Vec::new() }
+    }
+
+    fn finish_processes(&mut self) {
+        let (done, still): (Vec<RunningProcess>, Vec<RunningProcess>) = self.running
+            .drain(..)
+            .partition(|r| r.finish_cycle == self.curr_cycle);
+
+        self.running = still;
+
+        for r in done {
+            r.process.finish(&mut self.stocks);
+        }
+    }
+
+    fn start_processes(&mut self, processes: &[Process]) {
+        for p in processes.iter() {
+            while p.can_start(&self.stocks) {
+                p.start(&mut self.stocks);
+
+                self.running.push(RunningProcess {
+                    process: p.clone(),
+                    finish_cycle: self.curr_cycle + p.delay,
+                });
+
+                self.history.push(format!("{}:{}", self.curr_cycle, p.name));
+            }
+        }
+    }
+
+    fn print_result(&self) {
+        println!("Main Processes :");
+        for l in self.history.iter() {
+            println!(" {l}");
+        }
+        println!("No more process doable at cycle {}", self.curr_cycle);
+        println!("Stock :");
+
+        for (name, qty) in self.stocks.iter() {
+            println!(" {name} => {qty}");
+        }
+    }
+
+    fn log_history(&self, filename: &str) -> Result<(), String> {
+        let path = Path::new(filename).with_extension("log");
+
+        let log_content = self.history.join("\n") + "\n";
+
+        fs::write(path, log_content).map_err(|e| format!("Failed to write log file: {}", e))
+    }
+}
+
+pub fn simulate(config: Config, filename: &str, time: usize) -> Result<(), String> {
+    let mut state = State::new(config.stocks);
+    let start_time = Instant::now();
 
     loop {
-        for r in running.iter() {
-            if curr_cycle == r.finish_cycle {
-                r.process.finish(&mut stocks);
-                
-            }
+        if start_time.elapsed().as_secs() >= (time as u64) {
+            println!("Timeout of {}s reached. Shutting down.", time);
+            break;
         }
 
+        state.finish_processes();
+        state.start_processes(&config.processes);
 
-    }
-}
+        let next_cycle = state.running
+            .iter()
+            .map(|r| r.finish_cycle)
+            .min();
 
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
+        match next_cycle {
+            Some(cycle) => {
+                state.curr_cycle = cycle;
+            }
 
-pub fn can_start(stocks: &HashMap<String, usize>, process: &Process) -> bool {
-    for (name, qty) in &process.needs {
-        match stocks.get(name) {
-            Some(curr_qty) if curr_qty >= qty => {}
-            _ => {
-                return false;
+            None => {
+                break;
             }
         }
     }
 
-    true
-}
-
-pub fn start_process(stocks: &mut HashMap<String, usize>, process: &Process) {
-    for (name, qty) in process.needs.iter() {
-        let curr_qty = stocks.get_mut(name).unwrap();
-
-        *curr_qty -= qty;
-
-        if *curr_qty == 0 {
-            stocks.remove(name);
-        }
-    }
-}
-
-pub fn finish_process(stocks: &mut HashMap<String, usize>, process: &Process) {
-    for (name, qty) in process.results.iter() {
-        let curr_qty = stocks.entry(name.clone()).or_insert(0);
-
-        *curr_qty += qty;
-    }
+    state.print_result();
+    state.log_history(filename)
 }

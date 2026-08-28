@@ -1,15 +1,23 @@
 mod parser;
 mod simulator;
 
+use std::env;
+use std::process;
+
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    let args: Vec<String> = env::args().collect();
 
-    if args.len() != 3 {
-        eprintln!("Usage: ...");
-        return;
-    }
+    let (config, waiting_time) = match parser::parse(&args) {
+        Ok(result) => result,
+        Err(e) => {
+            eprintln!("{}", e);
+            process::exit(1);
+        }
+    };
 
-    if let Err(e) = parser::parse(&args) {
-        eprintln!("{e}")
+    let filename = &args[1];
+    if let Err(e) = simulator::simulate(config, filename, waiting_time) {
+        eprintln!("{}", e);
+        process::exit(1);
     }
 }
