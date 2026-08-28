@@ -1,7 +1,7 @@
 use std::collections::HashMap;
-use std::fmt::format;
 use std::sync::OnceLock;
 use std::fs;
+use crate::simulator::Process;
 
 use regex::Regex;
 
@@ -123,13 +123,6 @@ fn parse_optimize(line: &str) -> Result<Vec<String>, String> {
 }
 
 // ===== Process =====
-#[derive(Debug, Clone)]
-pub struct Process {
-    pub name: String,
-    pub needs: HashMap<String, usize>,
-    pub results: HashMap<String, usize>,
-    pub delay: usize,
-}
 
 static PROCESS_RE: OnceLock<Regex> = OnceLock::new();
 
