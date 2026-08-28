@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::format;
 use std::sync::OnceLock;
 use std::fs;
 
@@ -11,13 +12,15 @@ pub struct Config {
     pub optimize: Vec<String>,
 }
 
-pub fn parse(args: &[String]) -> Result<Config, String> {
-    if args.len() < 2 {
+pub fn parse(args: &[String]) -> Result<(Config, usize), String> {
+    if args.len() < 3 {
         return Err("Usage: ./stock_exchange <config_file> <waiting_time>".to_string());
     }
-    let file = &args[1];
 
-    parse_file(file)
+    let config = parse_file(&args[1])?;
+    let time = parse_time(&args[2])?;
+
+    Ok((config, time))
 }
 
 fn parse_file(file_name: &str) -> Result<Config, String> {
@@ -62,6 +65,10 @@ fn parse_file(file_name: &str) -> Result<Config, String> {
         processes,
         optimize,
     })
+}
+
+fn parse_time(time_str: &str) -> Result<usize, String> {
+    time_str.parse().map_err(|_| "Waiting time must be a valid positive integer\n".to_string())
 }
 
 // ===== Stock =====
