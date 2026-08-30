@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 use std::fs;
-use crate::simulator::Process;
 
 use regex::Regex;
 
@@ -12,18 +11,21 @@ pub struct Config {
     pub optimize: Vec<String>,
 }
 
-pub fn parse(args: &[String]) -> Result<(Config, usize), String> {
-    if args.len() < 3 {
-        return Err("Usage: ./stock_exchange <config_file> <waiting_time>".to_string());
-    }
+fn get_file_lines(file_name: &str) -> Result<Vec<String>, String> {
+    let content = fs
+        ::read_to_string(file_name)
+        .map_err(|_| format!("Failed to read file: {}", file_name))?;
 
-    let config = parse_file(&args[1])?;
-    let time = parse_time(&args[2])?;
+    let lines: Vec<String> = content
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect();
 
-    Ok((config, time))
+    Ok(lines)
 }
 
-fn parse_file(file_name: &str) -> Result<Config, String> {
+pub fn parse_file(file_name: &str) -> Result<Config, String> {
     let content = fs::read_to_string(&file_name).map_err(|_| "Failed to read file")?;
 
     let lines: Vec<&str> = content
@@ -67,7 +69,26 @@ fn parse_file(file_name: &str) -> Result<Config, String> {
     })
 }
 
-fn parse_time(time_str: &str) -> Result<usize, String> {
+pub fn parse_log(file_name: &str) -> Result<Vec<(usize, String)>, String> {
+    let lines = get_file_lines(file_name)?;
+    let mut actions: Vec<(usize, String)> = Vec::new();
+
+    for line in lines {
+        let (cycle_str, proc_name) = line
+            .split_once(':')
+            .ok_or_else(|| format!("Invalid log line: {}", line))?;
+
+        let cycle: usize = cycle_str
+            .parse()
+            .map_err(|_| format!("Invalid cycle number: {}", line))?;
+
+        actions.push((cycle, proc_name.to_string()));
+    }
+
+    Ok(actions)
+}
+
+pub fn parse_time(time_str: &str) -> Result<usize, String> {
     time_str.parse().map_err(|_| "Waiting time must be a valid positive integer\n".to_string())
 }
 
@@ -123,6 +144,45 @@ fn parse_optimize(line: &str) -> Result<Vec<String>, String> {
 }
 
 // ===== Process =====
+
+#[derive(Debug, Clone)]
+pub struct Process {
+    pub name: String,
+    pub needs: HashMap<String, usize>,
+    pub results: HashMap<String, usize>,
+    pub delay: usize,
+}
+
+impl Process {
+    pub fn can_start(&self, stocks: &HashMap<String, usize>) -> bool {
+        for (name, qty) in &self.needs {
+            match stocks.get(name) {
+                Some(curr_qty) if curr_qty >= qty => {}
+                _ => {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    pub fn start(&self, stocks: &mut HashMap<String, usize>) {
+        for (name, qty) in &self.needs {
+            let curr_qty = stocks.get_mut(name).unwrap();
+            *curr_qty -= qty;
+            if *curr_qty == 0 {
+                stocks.remove(name);
+            }
+        }
+    }
+
+    pub fn finish(&self, stocks: &mut HashMap<String, usize>) {
+        for (name, qty) in &self.results {
+            let curr_qty = stocks.entry(name.clone()).or_insert(0);
+            *curr_qty += qty;
+        }
+    }
+}
 
 static PROCESS_RE: OnceLock<Regex> = OnceLock::new();
 
