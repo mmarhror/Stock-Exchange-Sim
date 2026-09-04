@@ -1,7 +1,5 @@
 use std::env;
-use std::fs;
 use std::process;
-use std::collections::HashMap;
 
 use stock_exchange::parser;
 use stock_exchange::simulator::State;
@@ -36,10 +34,27 @@ fn main() {
     let mut state = State::new(config.stocks);
 
     for (log_cycle, proc_name) in actions {
-        println!("Evaluating: {}:{}", log_cycle, proc_name);
+        let line = format!("{log_cycle}:{proc_name}");
 
-        state.advance_to(log_cycle);
+        println!("Evaluating: {}", line);
 
-        
+        if let Err(e) = state.advance_to(log_cycle) {
+            println!("Error detected\n at {} {}", line, e);
+            process::exit(1);
+        }
+
+        if let Err(e) = state.start_by_name(&proc_name, &config.processes) {
+            println!("Error detected\n at {} {}", line, e);
+            process::exit(1);
+        };
+    }
+
+    state.finish_all();
+
+    println!("Log is valid!");
+    println!("Total time: {} cycles", state.curr_cycle);
+    println!("Stock :");
+    for (name, qty) in &state.stocks {
+        println!(" {name} => {qty}");
     }
 }

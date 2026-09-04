@@ -22,6 +22,13 @@ impl State {
         State { curr_cycle: 0, running: Vec::new(), stocks, history: Vec::new() }
     }
 
+    fn get_next_cycle(&self) -> Option<usize> {
+        self.running
+            .iter()
+            .map(|r| r.finish_cycle)
+            .min()
+    }
+
     fn finish_processes(&mut self) {
         let (done, still): (Vec<RunningProcess>, Vec<RunningProcess>) = self.running
             .drain(..)
@@ -49,11 +56,23 @@ impl State {
         }
     }
 
-    pub fn advance_to(&mut self, cycle: usize) {
+    pub fn advance_to(&mut self, cycle: usize) -> Result<(), String> {
+        if cycle < self.curr_cycle {
+            return Err(
+                format!(
+                    "Invalid timestamp: cannot go backwards from cycle {} to {}",
+                    self.curr_cycle,
+                    cycle
+                )
+            );
+        }
+
         while self.curr_cycle < cycle {
             self.curr_cycle += 1;
             self.finish_processes();
         }
+
+        Ok(())
     }
 
     pub fn start_by_name(&mut self, name: &str, processes: &[Process]) -> Result<(), String> {
@@ -73,6 +92,17 @@ impl State {
         });
 
         Ok(())
+    }
+
+    pub fn finish_all(&mut self) {
+        while
+            let Some(next_cycle) = self.running
+                .iter()
+                .map(|r| r.finish_cycle)
+                .min()
+        {
+            let _ = self.advance_to(next_cycle);
+        }
     }
 
     fn print_result(&self) {
@@ -95,9 +125,19 @@ impl State {
     }
 }
 
+fn search(start_time: Instant) -> Option<State> {
+    if start_time.elapsed().as_secs() >= (time as u64) {
+        println!("Timeout of {}s reached. Shutting down.", time);
+        return None;
+    }
+
+    Some(State::new(stocks))
+}
+
 pub fn simulate(config: Config, filename: &str, time: usize) -> Result<(), String> {
-    let mut state = State::new(config.stocks);
     let start_time = Instant::now();
+    let mut state = State::new(config.stocks);
+    // let mut best_state= State::new(config.stocks);
 
     loop {
         if start_time.elapsed().as_secs() >= (time as u64) {
@@ -105,25 +145,13 @@ pub fn simulate(config: Config, filename: &str, time: usize) -> Result<(), Strin
             break;
         }
 
-        state.finish_processes();
-        state.start_processes(&config.processes);
-
-        let next_cycle = state.running
-            .iter()
-            .map(|r| r.finish_cycle)
-            .min();
-
-        match next_cycle {
-            Some(cycle) => {
-                state.curr_cycle = cycle;
-            }
-
-            None => {
-                break;
-            }
-        }
+        let Some(next_cycle) = state.get_next_cycle() else {
+            break;
+        };
     }
 
-    state.print_result();
-    state.log_history(filename)
+    // state.print_result();
+    // state.log_history(filename)
+
+    Ok(())
 }
