@@ -55,7 +55,7 @@ impl State {
         }
 
         while self.curr_cycle < cycle {
-            self.curr_cycle = cycle;
+            self.curr_cycle += 1;
             self.finish_processes();
         }
 

@@ -39,22 +39,17 @@ fn main() {
         println!("Evaluating: {}", line);
 
         if let Err(e) = state.advance_to(log_cycle) {
-            println!("Error detected\n at {} {}", line, e);
+            println!("Error detected\nat {} {}", line, e);
             process::exit(1);
         }
 
         if let Err(e) = state.start_by_name(&proc_name, &config.processes) {
-            println!("Error detected\n at {} {}", line, e);
+            println!("Error detected\nat {} {}", line, e);
             process::exit(1);
         };
     }
 
     state.finish_all();
 
-    println!("Log is valid!");
-    println!("Total time: {} cycles", state.curr_cycle);
-    println!("Stock :");
-    for (name, qty) in &state.stocks {
-        println!(" {name} => {qty}");
-    }
+    println!("Trace completed, no error detected.");
 }

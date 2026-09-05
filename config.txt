@@ -1,6 +1,0 @@
-# test file
-board:7
-euro:10
-do_shelf:(board:1):(shelf:1):10
-buy_materiel:(euro:8):(material:1):10
-optimize:(time;cabinet)
