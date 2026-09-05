@@ -62,6 +62,10 @@ pub fn parse_file(file_name: &str) -> Result<Config, String> {
         }
     }
 
+    if processes.is_empty() {
+        return Err("Missing processes".to_string());
+    }
+
     Ok(Config {
         stocks,
         processes,
@@ -88,7 +92,7 @@ pub fn parse_log(file_name: &str) -> Result<Vec<(usize, String)>, String> {
     Ok(actions)
 }
 
-pub fn parse_time(time_str: &str) -> Result<usize, String> {
+pub fn parse_time(time_str: &str) -> Result<f64, String> {
     time_str.parse().map_err(|_| "Waiting time must be a valid positive integer\n".to_string())
 }
 
@@ -127,7 +131,7 @@ fn optimize_err(line: &str, reason: &str) -> String {
 
 fn parse_optimize_targets(targets_str: &str) -> Vec<String> {
     targets_str
-        .split(|c| (c == '|' || c == ';'))
+        .split(|c| c == '|' || c == ';')
         .filter(|el| !el.is_empty())
         .map(|el| el.to_string())
         .collect()

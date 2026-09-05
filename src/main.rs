@@ -15,7 +15,7 @@ fn main() {
     let config_file = &args[1];
     let waiting_time_str = &args[2];
 
-    let waiting_time: usize = match parser::parse_time(waiting_time_str) {
+    let waiting_time: f64 = match parser::parse_time(waiting_time_str) {
         Ok(time) => time,
         Err(e) => {
             eprintln!("Time Parsing Error: {}", e);
