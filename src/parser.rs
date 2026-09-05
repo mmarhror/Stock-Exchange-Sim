@@ -214,7 +214,7 @@ fn optimize_err(line: &str, reason: &str) -> String {
 fn parse_optimize_targets(targets_str: &str) -> Vec<String> {
     // Splits by either semicolon `;` or pipe `|`
     targets_str
-        .split(|c| (c == '|' || c == ';'))
+        .split(|c| c == '|' || c == ';')
         .filter(|el| !el.is_empty())
         .map(|el| el.to_string())
         .collect()
