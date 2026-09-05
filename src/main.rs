@@ -2,6 +2,7 @@ use std::env;
 use std::process;
 
 use stock_exchange::parser;
+use stock_exchange::parser::Config;
 use stock_exchange::simulator;
 
 fn main() {
@@ -23,7 +24,7 @@ fn main() {
         }
     };
 
-    let config = match parser::parse_file(config_file) {
+    let config: Config = match parser::parse_file(config_file) {
         Ok(cfg) => cfg,
         Err(e) => {
             eprintln!("File Parsing Error: {}", e);
