@@ -1,8 +1,7 @@
-use std::os::macos::raw::stat;
-use std::{ collections::HashMap, time::Duration };
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::time::Instant;
+use std::time::{ Instant, Duration };
 
 use crate::parser::{ Config, Process };
 
@@ -44,21 +43,6 @@ impl State {
         }
     }
 
-    fn start_processes(&mut self, processes: &[Process]) {
-        for p in processes.iter() {
-            while p.can_start(&self.stocks) {
-                p.start(&mut self.stocks);
-
-                self.running.push(RunningProcess {
-                    process: p.clone(),
-                    finish_cycle: self.curr_cycle + p.delay,
-                });
-
-                self.history.push(format!("{}:{}", self.curr_cycle, p.name));
-            }
-        }
-    }
-
     pub fn advance_to(&mut self, cycle: usize) -> Result<(), String> {
         if cycle < self.curr_cycle {
             return Err(
@@ -94,6 +78,8 @@ impl State {
             finish_cycle: self.curr_cycle + process.delay,
         });
 
+        self.history.push(format!("{}:{}", self.curr_cycle, name));
+
         Ok(())
     }
 
@@ -126,10 +112,38 @@ impl State {
         let log_content = self.history.join("\n") + "\n";
         fs::write(path, log_content).map_err(|e| format!("Failed to write log file: {}", e))
     }
+
+    fn better_then(&self, state: &Self, optimize: &[String]) -> bool {
+        for op in optimize {
+            if op == "time" {
+                return self.curr_cycle < state.curr_cycle;
+            }
+
+            let my_stocks = &self.stocks;
+            let other_stock = &self.stocks;
+        }
+
+        false
+    }
 }
 
-fn search(state: &State, processes: &[Process], deadline: Instant, best: &mut Option<State>) {
+fn search(
+    max_cycles: usize,
+    deadline: Instant,
+    state: &State,
+    processes: &[Process],
+    idx: usize,
+    best: &mut Option<State>
+) {
     if Instant::now() >= deadline {
+        return;
+    }
+
+    if state.curr_cycle >= max_cycles {
+        let mut final_state = state.clone();
+        final_state.finish_all();
+
+        *best = Some(final_state);
         return;
     }
 
@@ -141,19 +155,23 @@ fn search(state: &State, processes: &[Process], deadline: Instant, best: &mut Op
         return;
     }
 
-    let mut child = state.clone();
+    for (i, process) in processes.iter().enumerate() {
+        let mut child = state.clone();
 
-    for process in processes {
-        if process.can_start(&state.stocks) {
-            let _ = child.start_by_name(&process.name, processes);
-            search(&child, processes, deadline, best);
+        if process.can_start(&state.stocks) && i >= idx {
+            if child.start_by_name(&process.name, processes).is_ok() {
+                search(max_cycles, deadline, &child, processes, i, best);
+            }
         }
     }
 
     if any_running {
-        let next_cycle = child.get_next_cycle().unwrap();
-        let _ = child.advance_to(next_cycle);
-        search(&child, processes, deadline, best);
+        if let Some(next_cycle) = state.get_next_cycle() {
+            let mut child = state.clone();
+            if child.advance_to(next_cycle).is_ok() {
+                search(max_cycles, deadline, &child, processes, 0, best);
+            }
+        }
     }
 }
 
@@ -162,12 +180,16 @@ pub fn simulate(config: Config, filename: &str, time: usize) {
     let initial_state = State::new(config.stocks.clone());
     let mut best: Option<State> = None;
 
-    search(&initial_state, &config.processes, deadline, &mut best);
+    let max_cycles = 1000;
+
+    search(max_cycles, deadline, &initial_state, &config.processes, 0, &mut best);
 
     match best {
         Some(final_state) => {
             final_state.print_result();
-            final_state.log_history(filename);
+            if let Err(e) = final_state.log_history(filename) {
+                eprintln!("{}", e);
+            }
         }
         None => {
             println!("No complete schedule found within {}s.", time);
