@@ -196,3 +196,4 @@ pub fn simulate(config: Config, filename: &str, time: usize) {
         }
     }
 }
+// 
